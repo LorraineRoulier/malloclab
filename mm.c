@@ -1,6 +1,6 @@
 /*
  * mm-naive.c - The fastest, least memory-efficient malloc package.
- * 
+ *
  * In this naive approach, a block is allocated by simply incrementing
  * the brk pointer.  A block is pure payload. There are no headers or
  * footers.  Blocks are never coalesced or reused. Realloc is
@@ -71,9 +71,9 @@ void *mm_malloc(size_t size)
     char busy;
     int blockSize;
     int flag = 0;
-    while((heapCur < (char *)mem_heap_hi())){
-    	busy = (char)((*(int *)heapCur) & -2);
-    	blockSize = ((*(int *)heapCur) >> MARKED_BITS)<< MARKED_BITS;
+    while((heapCur < (char*) mem_heap_hi())){
+    	busy = (char)(*heapCur & -2);
+    	blockSize = (*heapCur >> MARKED_BITS)<< MARKED_BITS;
       	if (busy){
       	    heapCur += blockSize;
       	}
@@ -101,37 +101,46 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {
-	//printf("freeing ptr : %d\n", ptr);
-	ptr = (char *) (ptr - SIZE_T_SIZE);
+	printf("freeing ptr : %d\n", ptr);
+	ptr = (char* ) ptr - SIZE_T_SIZE;
 	
 	//let's mark the block as free
 	//check that it is indeed allocated :
 	//TODO
-	*ptr = (*ptr) & -2;
-	size_t size = ((*ptr) >> MARKED_BITS) << MARKED_BITS;
-	*(ptr + size) = *(ptr + size) & (~1);
+	int* ptrAsInt = (int*) ptr;
+	*ptrAsInt = *ptrAsInt & (~2);
+	size_t size = (*ptrAsInt >> MARKED_BITS) << MARKED_BITS;
+	int* endPtrAsInt = (int*) (ptr + size - SIZE_T_SIZE);
+	*endPtrAsInt = *ptrAsInt;
 	printf("size of block ; %u\n", size);
 
 	//let's try to coalesce with previous block
-	size_t sizePrevBlock = ((*(ptr - SIZE_T_SIZE)) >> MARKED_BITS) << MARKED_BITS;
-	char* prevBlock = ptr - sizePrevBlock;
+	int* ptrToPrevBl = (int*) (ptr - SIZE_T_SIZE);
+	size_t sizePrevBlock = ((*ptrToPrevBl) >> MARKED_BITS) << MARKED_BITS;
+	int* prevBlock = (int*) (ptr - sizePrevBlock);
 	if(! (*prevBlock) & 1){//prev block is not busy
-		*prevBlock = size + sizePrevBlock;
-		*prevBlock = (*prevBlock) | 1;
-		*(prevBlock + size + sizePrevBlock) = *prevBlock;
-		ptr = prevBlock;
 		size += sizePrevBlock;
+		*prevBlock = size | 1;
+		*endPtrAsInt = *prevBlock;
+		ptrAsInt = prevBlock;
+		/**prevBlock = size + sizePrevBlock;
+		*prevBlock = (*prevBlock) | 1;
+		*(ptr + size - SIZE_T_SIZE) = *prevBlock;
+		ptr = (char*) prevBlock;
+		size += sizePrevBlock;*/
 	}
 	
 	//let's try to coalesce with next block
-	size_t sizeNextBlock = ((*(ptr + size)) >> MARKED_BITS) << MARKED_BITS;
-	char* nextBlock = ptr + sizeNextBlock;
+	int* ptrNextBl = (int*) (ptr + size);
+	size_t sizeNextBlock = ((*ptrNextBl) >> MARKED_BITS) << MARKED_BITS;
+	int* endNextBlock = (int*) (ptr + sizeNextBlock + size - SIZE_T_SIZE);
 	if(! (*nextBlock) & 1){//next block is not busy
 		*nextBlock = size + sizeNextBlock;
 		*nextBlock = (*nextBlock) | 1;
 		*(nextBlock + size + sizeNextBlock) = *nextBlock;
 	}	
 }
+
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
@@ -140,7 +149,7 @@ void *mm_realloc(void *ptr, size_t size)
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
-    
+
     newptr = mm_malloc(size);
     if (newptr == NULL)
       return NULL;
@@ -151,17 +160,3 @@ void *mm_realloc(void *ptr, size_t size)
     mm_free(oldptr);
     return newptr;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
