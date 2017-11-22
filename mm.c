@@ -68,12 +68,12 @@ void *mm_malloc(size_t size)
     //printf("pagesize %u, ",mem_pagesize());
     //printf("void * %u ", sizeof(char));
     char * heapCur = heapLo;
-    char busy;
+    int busy;
     int blockSize;
     int flag = 0;
     while((heapCur < (char*) mem_heap_hi())){
-    	busy = (char)(*heapCur & -2);
-    	blockSize = (*heapCur >> MARKED_BITS)<< MARKED_BITS;
+    	busy = ((*(int *)heapCur) & -2);
+    	blockSize = ((*( int *)heapCur) >> MARKED_BITS)<< MARKED_BITS;
       	if (busy){
       	    heapCur += blockSize;
       	}
