@@ -134,10 +134,10 @@ void mm_free(void *ptr)
 	int* ptrNextBl = (int*) (ptr + size);
 	size_t sizeNextBlock = ((*ptrNextBl) >> MARKED_BITS) << MARKED_BITS;
 	int* endNextBlock = (int*) (ptr + sizeNextBlock + size - SIZE_T_SIZE);
-	if(! (*nextBlock) & 1){//next block is not busy
-		*nextBlock = size + sizeNextBlock;
-		*nextBlock = (*nextBlock) | 1;
-		*(nextBlock + size + sizeNextBlock) = *nextBlock;
+	if(! (*ptrNextBlock) & 1){//next block is not busy
+		size += sizeNextBlock;
+		*ptrAsInt = size | 1;
+		*endNextBlock = *ptrAsInt;
 	}	
 }
 
