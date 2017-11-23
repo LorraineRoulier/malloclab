@@ -41,7 +41,7 @@ team_t team = {
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x3)
 #define ALIGN_BIS(size) (((size) + (ALIGNMENT_BIS-1)) & ~0x7)
-#define MARKED_BITS 3
+#define MARKED_BITS 2
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
 void * heapLo;
@@ -51,14 +51,13 @@ void * heapLo;
 
 int mm_init(void)
 {
-
 		mem_sbrk((int)mem_pagesize());
 		heapLo = mem_heap_lo() + 4;
 		int* hLAsInt = (int*) heapLo;
-		*hLAsInt = (mem_pagesize() - 4);
-		int* endPtr = (int*) (heapLo + mem_pagesize() - SIZE_T_SIZE * 2);
+		*hLAsInt = (mem_pagesize() - SIZE_T_SIZE);
+		int* endPtr = (int*) (heapLo + mem_pagesize() - SIZE_T_SIZE*2 );
 		*endPtr = mem_pagesize() - SIZE_T_SIZE;
-		printf("init Hl %d\n", heapLo);
+		printf("init Hl %u and endPtr %u and blocksize %u \n", heapLo,endPtr,*endPtr);
 		return 0;
 }
 
@@ -67,20 +66,20 @@ int mm_init(void)
  *     Always allocate a block whose size is a multiple of the alignment.
  */
 void *mm_malloc(size_t size)
-{
+{		
 		int newsize = ALIGN_BIS(size + 2*SIZE_T_SIZE);
 		//printf("SIZE_T %u\n ",SIZE_T_SIZE);
 		//printf("pagesize %u, ",mem_pagesize());
 		//printf("void * %u ", sizeof(char));
 		printf("allocation : %u et new %u \n ", size, newsize);
 		char * heapCur = heapLo;
-		printf("hL : %d, val : %d\n", heapLo, *((int *)heapLo));
+		printf("hL : %u, val : %d\n", heapLo, *((int *)heapLo));
 		int busy;
 		int blockSize;
 		int flag = 0;
 		while((heapCur < (char*) mem_heap_hi())){
 				busy = (*((int *)heapCur)) & (~(-2));
-
+				printf("heapCur %u memheapHi %u ",heapCur, mem_heap_hi());
 				blockSize = ((*(( int *)heapCur)) >> MARKED_BITS)<< MARKED_BITS;
 				printf("size : %u busy : %d\n", blockSize, busy);
 				if (busy){
@@ -95,9 +94,10 @@ void *mm_malloc(size_t size)
 								heapCur += blockSize;
 				}
 		}
-		if (flag == 0){
+		/*if (flag == 0){
 				mem_sbrk((int)mem_pagesize());
-				heapCur = mem_heap_hi() - mem_pagesize();
+				heapCur = mem_heap_hi() +1 - mem_pagesize();
+				printf("creating new page, heapCur %u\n", heapCur);
 				blockSize = mem_pagesize();
 				/*int* emptyBBegin = (int*) (heapCur + newsize);
 				int* emptyBEnd = (int*) (heapCur + mem_pagesize() - SIZE_T_SIZE);
@@ -114,7 +114,7 @@ void *mm_malloc(size_t size)
 		*emptyBegin = blockSize - newsize;
 		*emptyEnd = blockSize - newsize;
 
-		printf("heapCur : %d\n",* ((int*) heapCur));
+		printf("heapCur value : %d\n",* ((int*) heapCur));
 		return (void *)((char *)heapCur + SIZE_T_SIZE);
 }
 
