@@ -43,7 +43,7 @@ team_t team = {
 #define ALIGN_BIS(size) (((size) + (ALIGNMENT_BIS-1)) & ~0x7)
 #define MARKED_BITS 2
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-#define VAL(ptr) (*((int*) ptr))
+#define VAL(ptr) (*((int*) (ptr)))
 #define SIZE(ptr) ((VAL(ptr) >> MARKED_BITS) << MARKED_BITS)
 #define BUSY(ptr) (VAL(ptr) & 1)
 
@@ -57,9 +57,10 @@ int mm_init(void)
 		mem_sbrk((int)mem_pagesize());
 		heapLo = mem_heap_lo() + SIZE_T_SIZE;
 		int* hLAsInt = (int*) heapLo;
-		*hLAsInt = mem_pagesize() - SIZE_T_SIZE*2;
+		VAL(heapLo) = mem_pagesize() - SIZE_T_SIZE*2;
 		int* endPtr = (int*) (heapLo + mem_pagesize() - SIZE_T_SIZE*3 );
-		*endPtr = mem_pagesize() - SIZE_T_SIZE*2;
+		VAL(heapLo + mem_pagesize() - SIZE_T_SIZE * 3) = mem_pagesize() - SIZE_T_SIZE*2;
+		(*(int *)(heapLo + mem_pagesize() - SIZE_T_SIZE * 3)) = mem_pagesize() - SIZE_T_SIZE*2;
 		//printf("init Hl %u and endPtr %u and blocksize %u \n", heapLo,endPtr,*endPtr);
 		return 0;
 }
@@ -82,6 +83,11 @@ int mm_check(void){
 	void* ptr = heapLo;
 	int prevIsFree = 0;
 	while(ptr < mem_heap_hi() - SIZE_T_SIZE){
+		if(SIZE(ptr) == 0){
+			printf("ptr of size 000000000000000\n");
+			return 0;
+		}
+	
 		//check if format mathces what is at the end of the block
 		if(VAL(ptr) != VAL(ptr + SIZE(ptr) - SIZE_T_SIZE)){
 			printf("begining and end of ptr %u (end at %u )don't match : deb %u et fin %u\n", ptr, ptr + SIZE(ptr) - SIZE_T_SIZE, VAL(ptr), VAL(ptr + SIZE(ptr) - SIZE_T_SIZE));
@@ -98,7 +104,7 @@ int mm_check(void){
 		else
 			prevIsFree = 0;
 		ptr += SIZE(ptr);
-	}
+		}
 	return 1;
 }
 
@@ -155,18 +161,20 @@ void *mm_malloc(size_t size)
 		}
 
 
-		int* heapCAsInt = (int*) heapCur;
-		* heapCAsInt = newsize | 1;
-		int* endPtrAsInt = (int*) (heapCur + newsize - SIZE_T_SIZE);
-		* endPtrAsInt = newsize | 1;
+		//int* heapCAsInt = (int*) heapCur;
+		VAL(heapCur) = newsize | 1;
+		//int* endPtrAsInt = (int*) (heapCur + newsize - SIZE_T_SIZE);
+		VAL(heapCur + newsize - SIZE_T_SIZE) = newsize | 1;
 		if (emptySpace - newsize !=0){
-				int* emptyBegin = (int*) (heapCur + newsize);
+				/*int* emptyBegin = (int*) (heapCur + newsize);
 				int* emptyEnd = (int*) (heapCur + emptySpace - SIZE_T_SIZE);
 				*emptyBegin = emptySpace - newsize;
-				*emptyEnd = emptySpace - newsize;
+				*emptyEnd = emptySpace - newsize;*/
+				VAL(heapCur + newsize) = emptySpace - newsize;
+				VAL(heapCur + emptySpace - SIZE_T_SIZE) = emptySpace - newsize;
 		}
 		a = mm_check();
-		return (void *)((char *)heapCur + SIZE_T_SIZE);
+		return (heapCur + SIZE_T_SIZE);
 }
 
 /*
