@@ -46,6 +46,7 @@ team_t team = {
 #define VAL(ptr) (*((int*) (ptr)))
 #define SIZE(ptr) ((VAL(ptr) >> MARKED_BITS) << MARKED_BITS)
 #define BUSY(ptr) (VAL(ptr) & 1)
+#define ENDPTR(ptr) (ptr + SIZE(ptr) - SIZE_T_SIZE)
 
 void * heapLo;
 /*
@@ -56,11 +57,11 @@ int mm_init(void)
 {
 		mem_sbrk((int)mem_pagesize());
 		heapLo = mem_heap_lo() + SIZE_T_SIZE;
-		int* hLAsInt = (int*) heapLo;
+		//int* hLAsInt = (int*) heapLo;
 		VAL(heapLo) = mem_pagesize() - SIZE_T_SIZE*2;
-		int* endPtr = (int*) (heapLo + mem_pagesize() - SIZE_T_SIZE*3 );
+		//int* endPtr = (int*) (heapLo + mem_pagesize() - SIZE_T_SIZE*3 );
 		VAL(heapLo + mem_pagesize() - SIZE_T_SIZE * 3) = mem_pagesize() - SIZE_T_SIZE*2;
-		(*(int *)(heapLo + mem_pagesize() - SIZE_T_SIZE * 3)) = mem_pagesize() - SIZE_T_SIZE*2;
+		//(*(int *)(heapLo + mem_pagesize() - SIZE_T_SIZE * 3)) = mem_pagesize() - SIZE_T_SIZE*2;
 		//printf("init Hl %u and endPtr %u and blocksize %u \n", heapLo,endPtr,*endPtr);
 		return 0;
 }
@@ -75,37 +76,37 @@ int mm_init(void)
  *
  */
 int mm_check(void){
-	if(heapLo != mem_heap_lo() + SIZE_T_SIZE){
-		printf("mem heap lo is bad\n");
-		return 0;
-	}
-	
-	void* ptr = heapLo;
-	int prevIsFree = 0;
-	while(ptr < mem_heap_hi() - SIZE_T_SIZE){
-		if(SIZE(ptr) == 0){
-			printf("ptr of size 000000000000000\n");
-			return 0;
+		if(heapLo != mem_heap_lo() + SIZE_T_SIZE){
+				printf("mem heap lo is bad\n");
+				return 0;
 		}
-	
-		//check if format mathces what is at the end of the block
-		if(VAL(ptr) != VAL(ptr + SIZE(ptr) - SIZE_T_SIZE)){
-			printf("begining and end of ptr %u (end at %u )don't match : deb %u et fin %u\n", ptr, ptr + SIZE(ptr) - SIZE_T_SIZE, VAL(ptr), VAL(ptr + SIZE(ptr) - SIZE_T_SIZE));
-			printf("size : %u and busy : %u from deb\n", SIZE(ptr), BUSY(ptr));
-			return 0;
+
+		void* ptr = heapLo;
+		int prevIsFree = 0;
+		while(ptr < mem_heap_hi() - SIZE_T_SIZE){
+				if(SIZE(ptr) == 0){
+						printf("ptr of size 000000000000000\n");
+						return 0;
+				}
+
+				//check if format mathces what is at the end of the block
+				if(VAL(ptr) != VAL(ptr + SIZE(ptr) - SIZE_T_SIZE)){
+						printf("begining and end of ptr %u (end at %u )don't match : deb %u et fin %u\n", ptr, ptr + SIZE(ptr) - SIZE_T_SIZE, VAL(ptr), VAL(ptr + SIZE(ptr) - SIZE_T_SIZE));
+						printf("size : %u and busy : %u from deb\n", SIZE(ptr), BUSY(ptr));
+						return 0;
+				}
+				//if block is free checks that prevIs not
+				if(! BUSY(ptr)){
+						if(prevIsFree){
+								printf("lack of coalescing : at ptr %u, of val %u\n", ptr, VAL(ptr));
+						}
+						prevIsFree = 1;
+				}
+				else
+						prevIsFree = 0;
+				ptr += SIZE(ptr);
 		}
-		//if block is free checks that prevIs not
-		if(! BUSY(ptr)){
-			if(prevIsFree){
-				printf("lack of coalescing : at ptr %u, of val %u\n", ptr, VAL(ptr));
-			}
-			prevIsFree = 1;
-		}
-		else
-			prevIsFree = 0;
-		ptr += SIZE(ptr);
-		}
-	return 1;
+		return 1;
 }
 
 /*
@@ -167,9 +168,9 @@ void *mm_malloc(size_t size)
 		VAL(heapCur + newsize - SIZE_T_SIZE) = newsize | 1;
 		if (emptySpace - newsize !=0){
 				/*int* emptyBegin = (int*) (heapCur + newsize);
-				int* emptyEnd = (int*) (heapCur + emptySpace - SIZE_T_SIZE);
-				*emptyBegin = emptySpace - newsize;
-				*emptyEnd = emptySpace - newsize;*/
+				  int* emptyEnd = (int*) (heapCur + emptySpace - SIZE_T_SIZE);
+				 *emptyBegin = emptySpace - newsize;
+				 *emptyEnd = emptySpace - newsize;*/
 				VAL(heapCur + newsize) = emptySpace - newsize;
 				VAL(heapCur + emptySpace - SIZE_T_SIZE) = emptySpace - newsize;
 		}
@@ -182,48 +183,58 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {		
-	int a = mm_check();	
-	if (ptr != NULL){
-				//printf("freeing ptr : %u\n", ptr);
-				ptr = ptr - SIZE_T_SIZE;
+		int a = mm_check();	
+		if(ptr == NULL)
+				return;
+		//printf("freeing ptr : %u\n", ptr);
+		ptr = ptr - SIZE_T_SIZE;
 
-				//let's mark the block as free
-				//check that it is indeed allocated :
-				//TODO
-				int* ptrAsInt = (int*) ptr;
-				*ptrAsInt = *ptrAsInt & (-2);
-				size_t size = ((*ptrAsInt) >> MARKED_BITS) << MARKED_BITS;
-				int* endPtrAsInt = (int*) (ptr + size - SIZE_T_SIZE);
-				*endPtrAsInt = *ptrAsInt;
-				//printf("size of block ; %u\n", size);
+		//let's mark the block as free
+		//check that it is indeed allocated :
+		//TODO
+		//int* ptrAsInt = (int*) ptr;
+		//*ptrAsInt = *ptrAsInt & (-2);
+		VAL(ptr) = VAL(ptr) & (-2);
+		//size_t size = ((*ptrAsInt) >> MARKED_BITS) << MARKED_BITS;
+		//int* endPtrAsInt = (int*) (ptr + size - SIZE_T_SIZE);
+		//*endPtrAsInt = *ptrAsInt;
+		VAL(ENDPTR(ptr)) = VAL(ptr);
+		//printf("size of block ; %u\n", size);
 
-				//let's try to coalesce with previous block
-				int* ptrToPrevBl = (int*) (ptr - SIZE_T_SIZE);
-				size_t sizePrevBlock = ((*ptrToPrevBl) >> MARKED_BITS) << MARKED_BITS;
-				int* prevBlock = (int*) (ptr - sizePrevBlock);
-				//printf("prevblock %u, sizeprevblock %u, busy ? %u \n",prevBlock, sizePrevBlock, ((*prevBlock) & 1));
-				if(!((*prevBlock) & 1) && (ptr > mem_heap_lo()+5)){//prev block is not busy
-						size += sizePrevBlock;
-						*prevBlock = size & (-2);
-						*endPtrAsInt = *prevBlock;
-						ptrAsInt = prevBlock;
-						ptr = ptr - sizePrevBlock;
-						//printf("coalese prev : value coalesed %u \n", *ptrAsInt);
-				}
-
-				//let's try to coalesce with next block
-				int* ptrNextBl = (int*) (ptr + size);
-				size_t sizeNextBlock = ((*ptrNextBl) >> MARKED_BITS) << MARKED_BITS;
-				int* endNextBlock = (int*) (ptr + sizeNextBlock + size - SIZE_T_SIZE);
-				//printf("nextblock %u, sizenextblock %u, busy ? %u \n",ptrNextBl, sizeNextBlock, ((*ptrNextBl) & 1));
-				if(!((*ptrNextBl) & 1) && (ptr + size) < (mem_heap_hi() -5)){//next block is not busy
-						size += sizeNextBlock;
-						*ptrAsInt = size & (-2);
-						*endNextBlock = *ptrAsInt;
-						//printf("coalese next : value coalesed %u \n", *ptrAsInt);
-				}
+		//let's try to coalesce with previous block
+		//int* ptrToPrevBl = (int*) (ptr - SIZE_T_SIZE);
+		//size_t sizePrevBlock = ((*ptrToPrevBl) >> MARKED_BITS) << MARKED_BITS;
+		//int* prevBlock = (int*) (ptr - sizePrevBlock);
+		//void* ptrEndPrevBlock = ptr - SIZE_T_SIZE;
+		void* ptrPrevBlock = ptr - SIZE(ptr - SIZE_T_SIZE);
+		//printf("prevblock %u, sizeprevblock %u, busy ? %u \n",prevBlock, sizePrevBlock, ((*prevBlock) & 1));
+		if(!BUSY(ptrPrevBlock) && (ptr > mem_heap_lo()+5)){//prev block is not busy
+				VAL(ptrPrevBlock) = SIZE(ptr) + SIZE(ptrPrevBlock);
+				VAL(ENDPTR(ptrPrevBlock)) = VAL(ptrPrevBlock);
+				ptr = ptrPrevBlock;
+				//size += sizePrevBlock;
+				//*prevBlock = size & (-2);
+				//*endPtrAsInt = *prevBlock;
+				//ptrAsInt = prevBlock;
+				//ptr = ptr - sizePrevBlock;
+				//printf("coalese prev : value coalesed %u \n", *ptrAsInt);
 		}
-		a = mm_check();	
+
+		//let's try to coalesce with next block
+		//int* ptrNextBl = (int*) (ptr + size);
+		//size_t sizeNextBlock = ((*ptrNextBl) >> MARKED_BITS) << MARKED_BITS;
+		//int* endNextBlock = (int*) (ptr + sizeNextBlock + size - SIZE_T_SIZE);
+		void* ptrNextBlock = ptr + SIZE(ptr);
+		//printf("nextblock %u, sizenextblock %u, busy ? %u \n",ptrNextBl, sizeNextBlock, ((*ptrNextBl) & 1));
+		if(! BUSY(ptrNextBlock) && (ptr + SIZE(ptr)) < (mem_heap_hi() -5)){//next block is not busy
+				VAL(ptr) = SIZE(ptr) + SIZE(ptrNextBlock);
+				VAL(ENDPTR(ptr)) = VAL(ptr);
+				//size += sizeNextBlock;
+				//*ptrAsInt = size & (-2);
+				//*endNextBlock = *ptrAsInt;
+				//printf("coalese next : value coalesed %u \n", *ptrAsInt);
+		}
+	a = mm_check();	
 }
 
 /*
@@ -238,55 +249,59 @@ void *mm_realloc(void *ptr, size_t size)
 		else if (size == 0){
 				mm_free(ptr);
 		}
-		int blockSize = 0;
-		int busy = 0;
+		//int blockSize = 0;
+		//int busy = 0;
 		int newBlockSize = ALIGN_BIS(size + 2*SIZE_T_SIZE);
 		//printf("reallocating ptr %u of size %u \n ",ptr, size);
 		ptr -= SIZE_T_SIZE;		
-		blockSize = ((*(( int *)ptr)) >> MARKED_BITS)<< MARKED_BITS;
-		busy = (*((int *)ptr)) & 1;
+		//blockSize = ((*(( int *)ptr)) >> MARKED_BITS)<< MARKED_BITS;
+		//busy = (*((int *)ptr)) & 1;
 		//printf("old block is busy %u of size %u \n",busy,blockSize);
-		if (blockSize == newBlockSize){
+		if (SIZE(ptr) == newBlockSize){
 				return ptr;
 		}
-		int* newPtr = (int*) ptr;
-		int* newPtrEnd =(int*) (ptr + newBlockSize - SIZE_T_SIZE);
-		int* nextPtr = (int*) (ptr + blockSize);
-		if (blockSize > newBlockSize){
+		//int* newPtr = (int*) ptr;
+		//int* newPtrEnd =(int*) (ptr + newBlockSize - SIZE_T_SIZE);
+		//int* nextPtr = (int*) (ptr + blockSize);
+		if (SIZE(ptr) > newBlockSize){
+				int oldSize = SIZE(ptr);
 				//printf(" newBlockSize is smaller");
-				*newPtr = newBlockSize | busy;
-				*newPtrEnd = newBlockSize | busy;
+				VAL(ptr) = newBlockSize | BUSY(ptr);
+				VAL(ENDPTR(ptr)) = newBlockSize | BUSY(ptr);
 				//rest of the pointer freed
 				//printf(" size freed : %u\n", blockSize - newBlockSize);
-				*(int*)(ptr + newBlockSize) = (blockSize-newBlockSize) |1; 
-				*(int*)(ptr + blockSize - SIZE_T_SIZE) = (blockSize-newBlockSize) |1;
+				VAL(ptr + newBlockSize) = (oldSize-newBlockSize) |1; 
+				VAL(ENDPTR(ptr + newBlockSize)) = (oldSize-newBlockSize) |1;
 				mm_free(ptr + newBlockSize + SIZE_T_SIZE);
 		}
-		if (blockSize < newBlockSize){
+		if (SIZE(ptr) < newBlockSize){
 				//printf(" newBlockSize is bigger");
-				int nextBlockSize = ((*nextPtr) >> MARKED_BITS)<< MARKED_BITS;
-				int nextBusy = *nextPtr &1;
+				void* nextBl = ptr + SIZE(ptr);
+				//int nextBlockSize = ((*nextPtr) >> MARKED_BITS)<< MARKED_BITS;
+				//int nextBusy = *nextPtr &1;
 				//printf("  nextBlockSize : %u busy %d\n", nextBlockSize, nextBusy);
-				if(!nextBusy && blockSize + nextBlockSize >= newBlockSize){ //we have room in the next block
+				if(!BUSY(nextBl) && SIZE(ptr) + SIZE(nextBl) >= newBlockSize){ //we have room in the next block
 						//printf("room in next block : size %u busy %u\n", nextBlockSize, *nextPtr|1);
-						*newPtr = newBlockSize | 1;
-						*newPtrEnd = *newPtr;
-						if(blockSize + nextBlockSize < newBlockSize){
-								*(int*) (ptr + newBlockSize) = (blockSize + nextBlockSize - newBlockSize) & (-2);
-								*(int*) (ptr + blockSize + nextBlockSize - SIZE_T_SIZE) = *(int*) (ptr + newBlockSize);
+						int oldSize = SIZE(ptr);
+						int oldNextSize = SIZE(nextBl);
+						VAL(ptr) = newBlockSize | 1;
+						VAL(ENDPTR(ptr)) = VAL(ptr);
+						if(oldSize + oldNextSize < newBlockSize){
+								VAL(ptr + SIZE(ptr)) = (oldSize + oldNextSize - newBlockSize) & (-2);
+								VAL(ENDPTR(ptr + SIZE(ptr))) = VAL(ptr + SIZE(ptr));
 						}
 				}
 				else{//we don't
 						void *oldptr = ptr + SIZE_T_SIZE;
-						size_t copySize;
+						size_t copySize = SIZE(ptr);
 
-						copySize = (*(int*) ptr) & (-2);
 						ptr = mm_malloc(size);
 						if (ptr == NULL)
 								return NULL;
 						//copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-  					memcpy(ptr, oldptr, copySize);
+						memcpy(ptr, oldptr, copySize);
 						mm_free(oldptr);
+						int b = mm_check();
 						return ptr;
 				}
 		}
