@@ -122,7 +122,7 @@ void *mm_malloc(size_t size)
 			printf("mem check failed begin malloc\n");*/
 		//if (size !=0){
 		int newsize = ALIGN_BIS(size + 2*SIZE_T_SIZE);
-		printf("allocation : %u et new %u \n ", size, newsize);
+		//printf("allocation : %u et new %u \n ", size, newsize);
 		char * heapCur = heapLo;
 		//printf("hL : %u, val : %d\n", heapLo, *((int *)heapLo));
 		int busy = 0;
@@ -154,7 +154,6 @@ void *mm_malloc(size_t size)
 		}
 		if (flag == 0){
 				int nb_sbrk = (newsize/mem_pagesize())+1;
-				printf("more sbrk %d \n", nb_sbrk);
 				mem_sbrk((int)mem_pagesize()*nb_sbrk);
 				if (!busy){
 						emptySpace = mem_pagesize()*nb_sbrk + blockSize;
@@ -196,7 +195,7 @@ void mm_free(void *ptr)
 			printf("mem check failed begin free\n");*/	
 		if(ptr == NULL)
 				return;
-		printf("freeing ptr : %u\n", ptr);
+		//printf("freeing ptr : %u\n", ptr);
 		ptr = ptr - SIZE_T_SIZE;
 
 		//let's mark the block as free
@@ -254,7 +253,7 @@ void mm_free(void *ptr)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-		printf("reallocating ptr %u of size %u \n ",ptr, size);
+		//printf("reallocating ptr %u of size %u \n ",ptr, size);
 		/*int a = mm_check();
 		if(a == 0)
 			printf("mem check failed begin realloc\n");*/
@@ -295,7 +294,8 @@ void *mm_realloc(void *ptr, size_t size)
 				//int nextBlockSize = ((*nextPtr) >> MARKED_BITS)<< MARKED_BITS;
 				//int nextBusy = *nextPtr &1;
 				//printf("  nextBlockSize : %u busy %d\n", SIZE(nextBl), BUSY(nextBl));
-				if(!BUSY(nextBl) && SIZE(ptr) + SIZE(nextBl) >= newBlockSize){ //we have room in the next block
+				int isLastBlock = nextBl >=  (void*)mem_heap_hi() - 3;
+				if(!isLastBlock && !BUSY(nextBl) && SIZE(ptr) + SIZE(nextBl) >= newBlockSize){ //we have room in the next block
 						//printf("room in next block\n");
 						int oldSize = SIZE(ptr);
 						int oldNextSize = SIZE(nextBl);
