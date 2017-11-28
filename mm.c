@@ -1,13 +1,15 @@
 /*
  * mm-naive.c - The fastest, least memory-efficient malloc package.
  *
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
+ * In this approach, we use an explicit list to allocate blocks. 
+ * There is 4 free bytes at the beginning and at the end of the list. 
+ * Each block has its 4 first and last bytes used to enter its size (aligned to 4) and a bit declaring if it is busy. 
+ * To allocate, we search for the first free block, if there is no free block large enough, 
+ * we create the sufficient number of new pages and initialize the new blocks created. If the last existing page wasn't entirely used,
+ * the space at the end of the last block is taken into acount for the allocation. 
+ * When freeing a pointer, we try to coallese with the previous and next blocks. 
+ * Realloc is implemented naively.  
  *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,11 +43,16 @@ team_t team = {
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x3)
 #define ALIGN_BIS(size) (((size) + (ALIGNMENT_BIS-1)) & ~0x7)
+
 #define MARKED_BITS 2
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
+/* convert ptr to int* ptr */
 #define VAL(ptr) (*((int*) (ptr)))
+/* get the size of the block */
 #define SIZE(ptr) ((VAL(ptr) >> MARKED_BITS) << MARKED_BITS)
+/* find out if the block is busy */
 #define BUSY(ptr) (VAL(ptr) & 1)
+/* get the last bytes of the block (where size and busy are entered) */
 #define ENDPTR(ptr) (ptr + SIZE(ptr) - SIZE_T_SIZE)
 
 void * heapLo;
@@ -57,12 +64,9 @@ int mm_init(void)
 {
 		mem_sbrk((int)mem_pagesize());
 		heapLo = mem_heap_lo() + SIZE_T_SIZE;
-		//int* hLAsInt = (int*) heapLo;
+		// set size of the first block
 		VAL(heapLo) = mem_pagesize() - SIZE_T_SIZE*2;
-		//int* endPtr = (int*) (heapLo + mem_pagesize() - SIZE_T_SIZE*3 );
-		VAL(heapLo + mem_pagesize() - SIZE_T_SIZE * 3) = mem_pagesize() - SIZE_T_SIZE*2;
-		//(*(int *)(heapLo + mem_pagesize() - SIZE_T_SIZE * 3)) = mem_pagesize() - SIZE_T_SIZE*2;
-		//printf("init Hl %u and endPtr %u and blocksize %u \n", heapLo,endPtr,*endPtr);
+		VAL(ENDPTR(heapLo)) = mem_pagesize() - SIZE_T_SIZE*2;
 		return 0;
 }
 
@@ -78,29 +82,29 @@ int mm_init(void)
 int mm_check(void){
 		printf("\n");
 		if(heapLo != mem_heap_lo() + SIZE_T_SIZE){
-				printf("mem heap lo is bad\n");
+				printf("error with mem heap lo\n");
 				return 0;
 		}
 
 		void* ptr = heapLo;
 		int prevIsFree = 0;
 		while(ptr < mem_heap_hi() - SIZE_T_SIZE){
-				printf("	 mm_check : ptr %u , size %u, busy %u\n", ptr, SIZE(ptr), BUSY(ptr));
+				printf("	 mm_check : ptr %u , size %u, busy %u\n", (unsigned int)ptr, (unsigned int)SIZE(ptr), (unsigned int)BUSY(ptr));
 				if(SIZE(ptr) == 0){
-						printf("ptr of size 000000000000000\n");
+						printf("PTR OF SIZE 0\n");
 						return 0;
 				}
 
 				//check if format matches what is at the end of the block
 				if(VAL(ptr) != VAL(ptr + SIZE(ptr) - SIZE_T_SIZE)){
-						printf("begining and end of ptr %u (end at %u )don't match : deb %u et fin %u\n", ptr, ptr + SIZE(ptr) - SIZE_T_SIZE, VAL(ptr), VAL(ptr + SIZE(ptr) - SIZE_T_SIZE));
-						printf("size : %u and busy : %u from deb\n", SIZE(ptr), BUSY(ptr));
+						printf("begining and end of ptr %u (end at %u )don't match : deb %u et fin %u\n", (unsigned int)ptr, (unsigned int)(ptr + SIZE(ptr) - SIZE_T_SIZE), VAL(ptr), VAL(ptr + SIZE(ptr) - SIZE_T_SIZE));
+						printf("size : %u and busy : %u from deb\n", (unsigned int)SIZE(ptr), (unsigned int)BUSY(ptr));
 						return 0;
 				}
 				//if block is free checks that prevIs not
 				if(! BUSY(ptr)){
 						if(prevIsFree){
-								printf("lack of coalescing : at ptr %u, of val %u\n", ptr, VAL(ptr));
+								printf("lack of coalescing : at ptr %u, of val %u\n", (unsigned int)ptr, VAL(ptr));
 						}
 						prevIsFree = 1;
 				}
@@ -112,72 +116,65 @@ int mm_check(void){
 }
 
 /*
- * mm_malloc - Allocate a block by incrementing the brk pointer.
- *     Always allocate a block whose size is a multiple of the alignment.
+ * mm_malloc - Allocates the first free block large enough. Sets its footer and header, and those of the free block after. 
+ * If there is not enough space available, creates new pages, and takes into account the last block of the old memory if it was free.
  */
 void *mm_malloc(size_t size)
 {		
 		/*int a = mm_check();
 		if(a == 0)
 			printf("mem check failed begin malloc\n");*/
-		//if (size !=0){
 		int newsize = ALIGN_BIS(size + 2*SIZE_T_SIZE);
-		//printf("allocation : %u et new %u \n ", size, newsize);
+		//printf("allocating : %u bytes\n ", newsize);
+		// heapCur is the current pointer
 		char * heapCur = heapLo;
-		//printf("hL : %u, val : %d\n", heapLo, *((int *)heapLo));
-		int busy = 0;
-		int blockSize = 0;
 		int emptySpace = 0;
+		int blockSize = 0;
+		int busy = 0;
 		int flag = 0;
 		while(heapCur < ((char*) mem_heap_hi()- SIZE_T_SIZE)){
-				busy = BUSY(heapCur);
 				blockSize = SIZE(heapCur);
+				busy = BUSY(heapCur);
 				//printf("heapCur %u memheapHi %u ",heapCur, mem_heap_hi());
-				//blockSize = ((*(( int *)heapCur)) >> MARKED_BITS)<< MARKED_BITS;
 				//printf("ptr : %u size : %u busy : %d\n", heapCur, blockSize, busy);
-				if (SIZE(heapCur) == 0){
-						printf("BLOCKSIZE 0 --> SOMETHING IS NOT OK\n");
+				if (blockSize == 0){
+						printf("BLOCKSIZE 0 -> SOMETHING IS NOT OK\n");
 						break;
 				}
-				if (BUSY(heapCur)){
-						heapCur += SIZE(heapCur);
+				if (busy){
+						heapCur += blockSize;
 				}
 				else{
-						if (SIZE(heapCur) >= newsize){
+						if (blockSize >= newsize){
 								flag = 1;
-								emptySpace = SIZE(heapCur); 
+								emptySpace = blockSize;
 								break;
 						}
 						else
-								heapCur += SIZE(heapCur);
+								heapCur += blockSize;
 				}
 		}
 		if (flag == 0){
 				int nb_sbrk = (newsize/mem_pagesize())+1;
 				mem_sbrk((int)mem_pagesize()*nb_sbrk);
 				if (!busy){
+						//printf("heapCur %u is not busy\n",heapCur);
 						emptySpace = mem_pagesize()*nb_sbrk + blockSize;
 						heapCur -= blockSize;
+						
 				}
 				else {
+						//printf("heapCur %u is busy\n",heapCur);
 						emptySpace = mem_pagesize()*nb_sbrk;
 						heapCur = mem_heap_hi() +1 - SIZE_T_SIZE - mem_pagesize()*nb_sbrk;
 				}
 				//printf("create nb sbrk %u, new heapCur %u, new blocksize %u\n",nb_sbrk,heapCur,blockSize);
 		}
-
-
-		//int* heapCAsInt = (int*) heapCur;
 		VAL(heapCur) = newsize | 1;
-		//int* endPtrAsInt = (int*) (heapCur + newsize - SIZE_T_SIZE);
-		VAL(heapCur + newsize - SIZE_T_SIZE) = newsize | 1;
+		VAL(ENDPTR(heapCur)) = newsize | 1;
 		if (emptySpace - newsize !=0){
-				/*int* emptyBegin = (int*) (heapCur + newsize);
-				  int* emptyEnd = (int*) (heapCur + emptySpace - SIZE_T_SIZE);
-				 *emptyBegin = emptySpace - newsize;
-				 *emptyEnd = emptySpace - newsize;*/
 				VAL(heapCur + newsize) = emptySpace - newsize;
-				VAL(heapCur + emptySpace - SIZE_T_SIZE) = emptySpace - newsize;
+				VAL(heapCur +emptySpace - SIZE_T_SIZE) = emptySpace - newsize;
 		}
 		/*a = mm_check();
 		if(a == 0)
@@ -186,7 +183,7 @@ void *mm_malloc(size_t size)
 }
 
 /*
- * mm_free - Freeing a block does nothing.
+ * mm_free - Freeing a block changes it's header and footer and tries to coallese with the blocks before and after.
  */
 void mm_free(void *ptr)
 {		
@@ -199,48 +196,26 @@ void mm_free(void *ptr)
 		ptr = ptr - SIZE_T_SIZE;
 
 		//let's mark the block as free
-		//check that it is indeed allocated :
-		//TODO
-		//int* ptrAsInt = (int*) ptr;
-		//*ptrAsInt = *ptrAsInt & (-2);
 		VAL(ptr) = VAL(ptr) & (-2);
-		//size_t size = ((*ptrAsInt) >> MARKED_BITS) << MARKED_BITS;
-		//int* endPtrAsInt = (int*) (ptr + size - SIZE_T_SIZE);
-		//*endPtrAsInt = *ptrAsInt;
 		VAL(ENDPTR(ptr)) = VAL(ptr);
-		//printf("size of block ; %u\n", size);
+		//printf("size of block ; %u\n", SIZE(ptr));
 
 		//let's try to coalesce with previous block
-		//int* ptrToPrevBl = (int*) (ptr - SIZE_T_SIZE);
-		//size_t sizePrevBlock = ((*ptrToPrevBl) >> MARKED_BITS) << MARKED_BITS;
-		//int* prevBlock = (int*) (ptr - sizePrevBlock);
-		//void* ptrEndPrevBlock = ptr - SIZE_T_SIZE;
 		void* ptrPrevBlock = ptr - SIZE(ptr - SIZE_T_SIZE);
 		//printf("prevblock %u, sizeprevblock %u, busy ? %u \n",ptrPrevBlock, SIZE(ptrPrevBlock), SIZE(ptrPrevBlock));
-		if(!BUSY(ptrPrevBlock) && (ptr > mem_heap_lo()+5)){//prev block is not busy
+		if(!BUSY(ptrPrevBlock) && (ptr > mem_heap_lo()+5)){//prev block is not busy and ptr is not the first block
 				VAL(ptrPrevBlock) = SIZE(ptr) + SIZE(ptrPrevBlock);
 				VAL(ENDPTR(ptrPrevBlock)) = VAL(ptrPrevBlock);
 				ptr = ptrPrevBlock;
-				//size += sizePrevBlock;
-				//*prevBlock = size & (-2);
-				//*endPtrAsInt = *prevBlock;
-				//ptrAsInt = prevBlock;
-				//ptr = ptr - sizePrevBlock;
 				//printf("coalese prev : value coalesed %u \n", VAL(ptr));
 		}
 
 		//let's try to coalesce with next block
-		//int* ptrNextBl = (int*) (ptr + size);
-		//size_t sizeNextBlock = ((*ptrNextBl) >> MARKED_BITS) << MARKED_BITS;
-		//int* endNextBlock = (int*) (ptr + sizeNextBlock + size - SIZE_T_SIZE);
 		void* ptrNextBlock = ptr + SIZE(ptr);
 		//printf("nextblock %u, sizenextblock %u, busy ? %u \n",ptrNextBlock, SIZE(ptrNextBlock), BUSY(ptrNextBlock));
-		if(! BUSY(ptrNextBlock) && (ptr + SIZE(ptr)) < (mem_heap_hi() -5)){//next block is not busy
+		if(! BUSY(ptrNextBlock) && (ptr + SIZE(ptr)) < (mem_heap_hi() -5)){//next block is not busy and ptr is not the last block
 				VAL(ptr) = SIZE(ptr) + SIZE(ptrNextBlock);
 				VAL(ENDPTR(ptr)) = VAL(ptr);
-				//size += sizeNextBlock;
-				//*ptrAsInt = size & (-2);
-				//*endNextBlock = *ptrAsInt;
 				//printf("coalese next : value coalesed %u \n", VAL(ptr));
 		}
 	/*a = mm_check();
@@ -249,7 +224,9 @@ void mm_free(void *ptr)
 }
 
 /*
- * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
+ * mm_realloc - If the old block is bigger than the new block, free the end of the old block, set footers and headers.
+ * If the old block is smaller than the new block, we see the state of the next blocks until we reach the new size of block, 
+ * and update accordingly
  */
 void *mm_realloc(void *ptr, size_t size)
 {
@@ -264,19 +241,12 @@ void *mm_realloc(void *ptr, size_t size)
 				mm_free(ptr);
 				return NULL;
 		}
-		//int blockSize = 0;
-		//int busy = 0;
 		int newBlockSize = ALIGN_BIS(size + 2*SIZE_T_SIZE);
 		ptr -= SIZE_T_SIZE;		
-		//blockSize = ((*(( int *)ptr)) >> MARKED_BITS)<< MARKED_BITS;
-		//busy = (*((int *)ptr)) & 1;
 		//printf("old block is busy %u of size %u \n", BUSY(ptr), SIZE(ptr));
 		if (SIZE(ptr) == newBlockSize){
 				return ptr + SIZE_T_SIZE;
 		}
-		//int* newPtr = (int*) ptr;
-		//int* newPtrEnd =(int*) (ptr + newBlockSize - SIZE_T_SIZE);
-		//int* nextPtr = (int*) (ptr + blockSize);
 		if (SIZE(ptr) > newBlockSize){
 				int oldSize = SIZE(ptr);
 				//printf(" newBlockSize is smaller\n");
@@ -291,8 +261,6 @@ void *mm_realloc(void *ptr, size_t size)
 		if (SIZE(ptr) < newBlockSize){
 				//printf(" newBlockSize is bigger\n");
 				void* nextBl = ptr + SIZE(ptr);
-				//int nextBlockSize = ((*nextPtr) >> MARKED_BITS)<< MARKED_BITS;
-				//int nextBusy = *nextPtr &1;
 				//printf("  nextBlockSize : %u busy %d\n", SIZE(nextBl), BUSY(nextBl));
 				int isLastBlock = nextBl >=  (void*)mem_heap_hi() - 3;
 				if(!isLastBlock && !BUSY(nextBl) && SIZE(ptr) + SIZE(nextBl) >= newBlockSize){ //we have room in the next block
@@ -317,7 +285,6 @@ void *mm_realloc(void *ptr, size_t size)
 								//printf("malloc failed in realloc");
 								return NULL;
 						}
-						//copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
 						memcpy(ptr, oldptr, copySize);
 						//printf("on free : ");
 						mm_free(oldptr);
@@ -332,18 +299,4 @@ void *mm_realloc(void *ptr, size_t size)
 		if(a == 0)
 			printf("mem check failed end realloc\n");*/
 		return ptr + SIZE_T_SIZE;
-		/*
-		   void *oldptr = ptr;
-		   void *newptr;
-		   size_t copySize;
-
-		   newptr = mm_malloc(size);
-		   if (newptr == NULL)
-		   return NULL;
-		   copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-		   if (size < copySize)
-		   copySize = size;
-		   memcpy(newptr, oldptr, copySize);
-		   mm_free(oldptr);
-		   return newptr;*/
 }
